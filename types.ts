@@ -1,4 +1,5 @@
 
+
 export interface Character {
   id: string;
   name: string;
@@ -59,6 +60,7 @@ export interface GeneratedPanel {
   environmentId: string | null;
   timestamp: number;
   driveFileId?: string;
+  isSyncedWithDrive?: boolean;
 }
 
 export type ArtStyle = 'comic' | 'anime' | 'manga' | 'cartoon' | 'realistic' | 'retro_anime';
@@ -107,20 +109,10 @@ export interface ScriptPanelData {
   imageUrl?: string; 
 }
 
-// State Persistence Types
-export interface ModelLabState {
-  step: 1 | 2 | 3;
-  type: 'character' | 'object' | 'environment';
-  uploadedImage: string | null;
+export interface GoogleUser {
   name: string;
-  description: string;
-  gender: 'male' | 'female';
-  facialFeatures: string;
-  skinTone: string;
-  clothingDetails: string;
-  artStyle: ArtStyle;
-  artTheme: ArtTheme;
-  generatedModelSheet: string | null;
+  email: string;
+  picture: string;
 }
 
 export interface DriveConfig {
@@ -128,6 +120,7 @@ export interface DriveConfig {
   folderId: string | null;
   isEnabled: boolean;
   clientId: string;
+  user?: GoogleUser;
 }
 
 export interface StudioState {
@@ -148,4 +141,20 @@ export interface StudioState {
   lastGeneratedImage: string | null;
   currentRating: number | null;
   driveConfig: DriveConfig;
+}
+
+// ModelLabState interface used for persisting state in the Model Creator lab
+export interface ModelLabState {
+  step: number;
+  type: 'character' | 'object' | 'environment';
+  uploadedImage: string | null;
+  name: string;
+  description: string;
+  gender: 'male' | 'female';
+  facialFeatures: string;
+  skinTone: string;
+  clothingDetails: string;
+  artStyle: ArtStyle;
+  artTheme: ArtTheme;
+  generatedModelSheet: string | null;
 }

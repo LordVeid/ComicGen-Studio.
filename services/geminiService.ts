@@ -1,6 +1,8 @@
+
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { Character, ComicObject, Environment, GenerationRequest, ArtStyle, ScriptPanelData, ArtTheme, CharacterSpecs } from "../types";
 
+// Always initialize GoogleGenAI with a named parameter
 const getClient = () => {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
@@ -95,7 +97,7 @@ export const generateRandomScriptFromAssets = async (
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: { parts: [{ text: prompt }] }
+      contents: prompt
     });
     return response.text || "";
   } catch (e) {
@@ -117,8 +119,8 @@ export const generateRandomIdea = async (type: 'character' | 'object' | 'environ
   Return strictly JSON.`;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: { parts: [{ text: prompt }] },
+    model: 'gemini-3-flash-preview',
+    contents: prompt,
     config: {
       responseMimeType: 'application/json',
       responseSchema: {
@@ -179,10 +181,8 @@ export const parseScript = async (
 
   try {
     const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: {
-        parts: [{ text: prompt + `\n\nSCRIPT:\n${scriptText}` }]
-      },
+      model: 'gemini-3-flash-preview',
+      contents: prompt + `\n\nSCRIPT:\n${scriptText}`,
       config: {
         responseMimeType: 'application/json',
         responseSchema: {
@@ -226,7 +226,7 @@ export const enhancePrompt = async (originalPrompt: string): Promise<string> => 
   try {
     const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: { parts: [{ text: instruction }] }
+      contents: instruction
     }));
     return response.text || originalPrompt;
   } catch (e) {
@@ -240,7 +240,7 @@ export const analyzeImageForDescription = async (base64Image: string): Promise<{
   const mimeType = base64Image.split(';')[0].split(':')[1];
   try {
     const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           { text: "Analyze this character image for visual consistency (face, skin, clothing)." },

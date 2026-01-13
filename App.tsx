@@ -5,8 +5,8 @@ import { PanelGenerator } from './components/PanelGenerator';
 import { ModelCreator } from './components/ModelCreator';
 import { Gallery } from './components/Gallery';
 import { ScriptToPanels } from './components/ScriptToPanels';
-import { Character, ComicObject, Environment, GeneratedPanel, ScriptPanelData, ModelLabState, StudioState, ArtStyle, ArtTheme, DriveConfig } from './types';
-import { BookOpen, Palette, Wand2, Image as ImageIcon, LockKeyhole, FileText, Cloud, CloudOff, CheckCircle2, Loader2 } from 'lucide-react';
+import { Character, ComicObject, Environment, GeneratedPanel, ScriptPanelData, ModelLabState, StudioState, ArtStyle, ArtTheme, DriveConfig, GoogleUser } from './types';
+import { BookOpen, Palette, Wand2, Image as ImageIcon, LockKeyhole, FileText, LogOut, User as UserIcon, CheckCircle2, Loader2, AlertCircle, Key } from 'lucide-react';
 import { uploadImageToDrive, getFolderId, createFolder } from './services/driveService';
 
 declare global {
@@ -27,6 +27,7 @@ export default function App() {
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [panels, setPanels] = useState<GeneratedPanel[]>([]);
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
+  const [syncQueue, setSyncQueue] = useState<string[]>([]); // Tracking IDs being synced
   
   // --- PERSISTENT STATE ---
   
@@ -79,8 +80,7 @@ export default function App() {
     };
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Don't restore sensitive or temporary fields
-      return { ...defaultState, ...parsed, lastGeneratedImage: null, currentRating: null, driveConfig: defaultState.driveConfig };
+      return { ...defaultState, ...parsed, lastGeneratedImage: null, currentRating: null, driveConfig: { ...defaultState.driveConfig, clientId: localStorage.getItem('comicgen_drive_client_id') || '' } };
     }
     return defaultState;
   });
@@ -121,7 +121,6 @@ export default function App() {
     checkKey();
   }, [checkKey]);
 
-  // Global listener for API 404s
   useEffect(() => {
     const handleGlobalError = (event: ErrorEvent) => {
       if (event.message?.includes("API_KEY_NOT_FOUND") || event.error?.message?.includes("API_KEY_NOT_FOUND")) {
@@ -186,13 +185,16 @@ export default function App() {
 
     const config = studioState.driveConfig;
     if (config.isEnabled && config.accessToken && config.folderId) {
+      setSyncQueue(prev => [...prev, panel.id]);
       try {
         const timestamp = new Date(panel.timestamp).toISOString().replace(/[:.]/g, '-');
         const filename = `ComicGen_${timestamp}.png`;
         const driveFileId = await uploadImageToDrive(config.accessToken, config.folderId, panel.imageUrl, filename);
-        setPanels(prev => prev.map(p => p.id === panel.id ? { ...p, driveFileId } : p));
+        setPanels(prev => prev.map(p => p.id === panel.id ? { ...p, driveFileId, isSyncedWithDrive: true } : p));
       } catch (e) {
         console.error("Falha ao salvar no Google Drive:", e);
+      } finally {
+        setSyncQueue(prev => prev.filter(id => id !== panel.id));
       }
     }
   };
@@ -234,9 +236,9 @@ export default function App() {
     }));
   };
 
-  const handleDriveLogin = () => {
+  const handleGoogleLogin = () => {
     if (!studioState.driveConfig.clientId) {
-      alert("Por favor, configure o Google Client ID na Galeria > Configurações da Nuvem.");
+      alert("Por favor, configure o Google Client ID na Galeria > Configurações da Nuvem para ativar a sincronização com Drive.");
       setActiveView('gallery');
       return;
     }
@@ -245,17 +247,37 @@ export default function App() {
     try {
       const client = window.google.accounts.oauth2.initTokenClient({
         client_id: studioState.driveConfig.clientId,
-        scope: 'https://www.googleapis.com/auth/drive.file',
+        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
         callback: async (response: any) => {
           if (response.error) {
             setIsConnectingDrive(false);
             return;
           }
+          
           const accessToken = response.access_token;
-          let folderId = await getFolderId(accessToken);
-          if (!folderId) folderId = await createFolder(accessToken);
-          updateDriveConfig({ accessToken, folderId, isEnabled: true });
-          setIsConnectingDrive(false);
+          
+          try {
+            // Fetch profile info
+            const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            const profileData = await profileResponse.json();
+            
+            const user: GoogleUser = {
+              name: profileData.name,
+              email: profileData.email,
+              picture: profileData.picture
+            };
+
+            let folderId = await getFolderId(accessToken);
+            if (!folderId) folderId = await createFolder(accessToken);
+            
+            updateDriveConfig({ accessToken, folderId, isEnabled: true, user });
+          } catch (e) {
+            console.error("Erro ao recuperar perfil do Google:", e);
+          } finally {
+            setIsConnectingDrive(false);
+          }
         }
       });
       client.requestAccessToken();
@@ -263,6 +285,10 @@ export default function App() {
       console.error(e);
       setIsConnectingDrive(false);
     }
+  };
+
+  const handleLogout = () => {
+    updateDriveConfig({ accessToken: null, folderId: null, isEnabled: false, user: undefined });
   };
 
   if (isCheckingKey) {
@@ -282,17 +308,17 @@ export default function App() {
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">Acesso à API Necessário</h2>
             <p className="text-slate-400 mb-8 text-sm leading-relaxed">
-              Para utilizar os recursos de geração de imagem (Gemini 3 Pro), você precisa selecionar uma chave de API de um projeto pago (Billing habilitado).
+              Para utilizar os recursos de geração de imagem (Gemini 3 Pro), você precisa inserir ou selecionar sua própria <strong>Chave de API</strong> de um projeto pago (Billing habilitado).
             </p>
             <button 
               onClick={handleSelectKey}
-              className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-lg shadow-lg shadow-indigo-900/20 transition-all active:scale-95"
+              className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-lg shadow-lg shadow-indigo-900/20 transition-all active:scale-95 flex items-center justify-center gap-2"
             >
-              Selecionar Chave de API
+              <Key size={20} /> Inserir / Selecionar Chave
             </button>
             <div className="mt-6 pt-6 border-t border-slate-800">
               <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-xs text-slate-500 hover:text-indigo-400 transition-colors">
-                Ver documentação sobre faturamento
+                Como obter uma chave de API paga?
               </a>
             </div>
          </div>
@@ -329,19 +355,59 @@ export default function App() {
              <button onClick={() => setActiveView('gallery')} className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${activeView === 'gallery' ? 'bg-green-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}><ImageIcon size={14} /> Galeria</button>
           </div>
 
-          <div className="hidden lg:flex items-center gap-3">
-            {studioState.driveConfig.isEnabled ? (
-              <div className="flex items-center gap-2 bg-green-950/30 border border-green-900/50 px-3 py-1.5 rounded-full text-[10px] text-green-400 font-bold">
-                <CheckCircle2 size={12} /> Google Drive Ativo
+          <div className="flex items-center gap-4">
+            {syncQueue.length > 0 && (
+              <div className="flex items-center gap-2 text-indigo-400 animate-pulse">
+                <Loader2 size={14} className="animate-spin" />
+                <span className="text-[10px] font-bold uppercase">Sincronizando...</span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 border-r border-slate-800 pr-4">
+              <button 
+                onClick={handleSelectKey}
+                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-750 border border-slate-700 px-3 py-1.5 rounded-full text-[10px] text-indigo-400 font-bold transition-all"
+                title="Inserir ou Alterar sua própria Chave de API"
+              >
+                <Key size={12} />
+                Chave API
+              </button>
+            </div>
+
+            {studioState.driveConfig.user ? (
+              <div className="flex items-center gap-3">
+                <div className="hidden md:block text-right">
+                  <div className="text-xs font-bold text-white leading-none mb-1">{studioState.driveConfig.user.name}</div>
+                  <div className="text-[10px] text-green-400 flex items-center justify-end gap-1 font-medium leading-none">
+                    <CheckCircle2 size={10} /> Cloud Sync ON
+                  </div>
+                </div>
+                <div className="group relative">
+                  <img 
+                    src={studioState.driveConfig.user.picture} 
+                    alt="User" 
+                    className="w-8 h-8 rounded-full border border-slate-700 cursor-pointer hover:border-indigo-500 transition-all" 
+                  />
+                  <div className="absolute top-full right-0 mt-2 bg-slate-900 border border-slate-800 rounded-lg shadow-2xl p-1 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all z-50 min-w-[120px]">
+                    <button 
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-slate-800 rounded transition-colors"
+                    >
+                      <LogOut size={14} /> Sair do Google
+                    </button>
+                  </div>
+                </div>
               </div>
             ) : (
               <button 
-                onClick={handleDriveLogin}
+                onClick={handleGoogleLogin}
                 disabled={isConnectingDrive}
-                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-750 border border-slate-700 px-3 py-1.5 rounded-full text-[10px] text-slate-300 font-bold transition-all"
+                className="flex items-center gap-2 bg-white text-slate-900 px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-200 transition-all"
               >
-                {isConnectingDrive ? <Loader2 className="animate-spin" size={12} /> : <CloudOff size={12} />}
-                Login Google Drive
+                {isConnectingDrive ? <Loader2 className="animate-spin" size={14} /> : (
+                  <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/><path d="M3.964 10.706c-.18-.54-.282-1.117-.282-1.706s.102-1.166.282-1.706V4.962H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.962l3.007 2.332c.708-2.127 2.692-3.714 5.036-3.714z" fill="#EA4335"/><path d="M0 0h18v18H0z" fill="none"/></svg>
+                )}
+                Entrar com Google
               </button>
             )}
           </div>

@@ -409,7 +409,8 @@ export const ScriptToPanels: React.FC<ScriptToPanelsProps> = ({
                                       <div className="flex gap-2">
                                         <input type="text" placeholder="Refinar..." value={refinementInputs[panel.id] || ''} onChange={(e) => setRefinementInputs(prev => ({...prev, [panel.id]: e.target.value}))} className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white" />
                                         <button onClick={() => handleRefinePanel(panel)} disabled={isRefiningMap[panel.id]} className="bg-indigo-600 p-1.5 rounded" title="Refinar Imagem Atual">{isRefiningMap[panel.id] ? <RefreshCw className="animate-spin" size={14} /> : <Wand2 size={14} />}</button>
-                                        <button onClick={() => generateSinglePanel(panel)} disabled={panel.status === 'generating'} className="bg-slate-700 hover:bg-slate-600 p-1.5 rounded" title="Regerar do Zero (Usa Feedback)">
+                                        {/* Fix: removed redundant status check as panel.status is narrowed to 'done' here and they have no overlap */}
+                                        <button onClick={() => generateSinglePanel(panel)} className="bg-slate-700 hover:bg-slate-600 p-1.5 rounded" title="Regerar do Zero (Usa Feedback)">
                                             <RefreshCcw size={14} />
                                         </button>
                                       </div>

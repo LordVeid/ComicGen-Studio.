@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { GeneratedPanel, DriveConfig } from '../types';
-import { Download, Trash2, Calendar, Image as ImageIcon, Cloud, CloudOff, Link, Settings, CheckCircle, AlertCircle, Loader2, Edit2 } from 'lucide-react';
+import { Download, Trash2, Calendar, Image as ImageIcon, Cloud, CloudOff, Link, Settings, CheckCircle, AlertCircle, Loader2, Edit2, User } from 'lucide-react';
 import { getFolderId, createFolder } from '../services/driveService';
 
 interface GalleryProps {
@@ -26,7 +26,7 @@ export const Gallery: React.FC<GalleryProps> = ({ panels, onDeletePanel, onEditI
     setIsConnecting(true);
     const client = (window as any).google.accounts.oauth2.initTokenClient({
       client_id: driveConfig.clientId,
-      scope: 'https://www.googleapis.com/auth/drive.file',
+      scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
       callback: async (response: any) => {
         if (response.error) {
           setIsConnecting(false);
@@ -35,6 +35,12 @@ export const Gallery: React.FC<GalleryProps> = ({ panels, onDeletePanel, onEditI
 
         try {
           const accessToken = response.access_token;
+          
+          const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          });
+          const profileData = await profileResponse.json();
+
           let folderId = await getFolderId(accessToken);
           if (!folderId) {
             folderId = await createFolder(accessToken);
@@ -43,10 +49,15 @@ export const Gallery: React.FC<GalleryProps> = ({ panels, onDeletePanel, onEditI
           onUpdateDriveConfig({
             accessToken,
             folderId,
-            isEnabled: true
+            isEnabled: true,
+            user: {
+              name: profileData.name,
+              email: profileData.email,
+              picture: profileData.picture
+            }
           });
         } catch (e) {
-          console.error("Erro ao conectar com Drive", e);
+          console.error("Erro ao conectar com Google", e);
         } finally {
           setIsConnecting(false);
         }
@@ -59,7 +70,8 @@ export const Gallery: React.FC<GalleryProps> = ({ panels, onDeletePanel, onEditI
     onUpdateDriveConfig({
       accessToken: null,
       folderId: null,
-      isEnabled: false
+      isEnabled: false,
+      user: undefined
     });
   };
 
@@ -73,9 +85,9 @@ export const Gallery: React.FC<GalleryProps> = ({ panels, onDeletePanel, onEditI
         <p className="mb-6">Suas artes geradas aparecerão aqui.</p>
         <button 
           onClick={handleConnectDrive}
-          className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg transition-all"
+          className="flex items-center gap-2 px-6 py-3 bg-white text-slate-900 font-bold rounded-lg transition-all"
         >
-          <Cloud size={20} /> Vincular Google Drive
+          <User size={20} /> Entrar com Google
         </button>
       </div>
     );
@@ -91,7 +103,7 @@ export const Gallery: React.FC<GalleryProps> = ({ panels, onDeletePanel, onEditI
               Galeria de Artes ({panels.length})
             </h2>
             <p className="text-slate-400">
-              Gerencie, baixe ou edite suas criações no estúdio.
+              Gerencie, baixe ou edite suas criações. Sincronização automática ativa se logado.
             </p>
           </div>
 
@@ -102,9 +114,9 @@ export const Gallery: React.FC<GalleryProps> = ({ panels, onDeletePanel, onEditI
                   {driveConfig.isEnabled ? <Cloud size={20} /> : <CloudOff size={20} />}
                 </div>
                 <div>
-                  <div className="text-sm font-bold text-white">Google Drive</div>
+                  <div className="text-sm font-bold text-white">Cloud Sync (Google Drive)</div>
                   <div className="text-[10px] text-slate-400">
-                    {driveConfig.isEnabled ? 'Backup automático ativado' : 'Sincronização desativada'}
+                    {driveConfig.isEnabled ? `Conectado como ${driveConfig.user?.name}` : 'Backup automático desativado'}
                   </div>
                 </div>
               </div>
@@ -122,16 +134,16 @@ export const Gallery: React.FC<GalleryProps> = ({ panels, onDeletePanel, onEditI
                     onClick={handleDisconnect}
                     className="px-3 py-1.5 bg-red-900/30 text-red-400 border border-red-900/50 rounded-lg text-xs font-bold hover:bg-red-900/50 transition-all"
                   >
-                    Desvincular
+                    Logout
                   </button>
                 ) : (
                   <button 
                     onClick={handleConnectDrive}
                     disabled={isConnecting}
-                    className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-500 transition-all flex items-center gap-2"
+                    className="px-3 py-1.5 bg-white text-slate-950 rounded-lg text-xs font-bold hover:bg-slate-200 transition-all flex items-center gap-2"
                   >
                     {isConnecting ? <Loader2 className="animate-spin" size={14} /> : <Link size={14} />}
-                    Vincular
+                    Login
                   </button>
                 )}
               </div>
@@ -139,7 +151,7 @@ export const Gallery: React.FC<GalleryProps> = ({ panels, onDeletePanel, onEditI
 
             {showConfig && (
               <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-3 shadow-2xl animate-in slide-in-from-top-2 duration-200">
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Credenciais Google Cloud</div>
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Configuração de Credenciais</div>
                 <div className="space-y-1">
                   <label className="text-[10px] text-slate-400">OAuth Client ID</label>
                   <input 
@@ -152,7 +164,7 @@ export const Gallery: React.FC<GalleryProps> = ({ panels, onDeletePanel, onEditI
                 </div>
                 <div className="p-2 bg-indigo-950/20 rounded border border-indigo-900/30 text-[10px] text-indigo-300 leading-relaxed">
                   <AlertCircle size={12} className="inline mr-1 mb-0.5" />
-                  Crie um Client ID do tipo "Web Application" no <a href="https://console.cloud.google.com/" target="_blank" className="underline">Google Cloud Console</a> e adicione este domínio ao "Authorized JavaScript Origins".
+                  Necessário para habilitar o login e salvamento automático. Adicione este domínio aos origens autorizados no console da Google.
                 </div>
               </div>
             )}
@@ -211,7 +223,7 @@ export const Gallery: React.FC<GalleryProps> = ({ panels, onDeletePanel, onEditI
                    </button>
                 </div>
 
-                {driveConfig.isEnabled && (
+                {panel.isSyncedWithDrive && (
                   <div className="absolute top-2 left-2 p-1.5 bg-green-500/80 backdrop-blur rounded-lg text-white" title="Sincronizado com Drive">
                     <CheckCircle size={14} />
                   </div>
